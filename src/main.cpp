@@ -1,57 +1,49 @@
 #include <Arduino.h>
 #include <vector>
-
-class SQL {
-public:
-    // Method to handle SQL command input (non-const to allow modification)
-    void cmd(std::vector<String>& command) {
-        Serial.printf("Command received...\n");
-        // Iterate through command vector and print each part
-        for (const auto& part : command) {
-            Serial.println(part);  // Replace with actual command handling logic
-        }
-        command.clear();  
-    }
-};
+#include <SD.h>
+#include <ESP8266WiFi.h>    // WiFi library for ESP8266
+#include "SQL.h"             // Include your SQL class
+#include "Server.h"          // Include your Server class
 
 SQL sql;
+Server server(3306);  // Initialize the server to listen on port 3306
 
-// Task handle for the secondary core task
-TaskHandle_t CommandTask;
+void setup() {
+    Serial.begin(9600);  // Start Serial for debugging
+    wifi("Airtel_Zeus", "TheBestWifi");
+    server.begin();
+}
 
-// Function that will run on the secondary core
-void runCommandTask(void *parameter) {
-    while (true) {
-        // Example SQL command to be run every 2 seconds
-        std::vector<String> exampleCommand = {"CREATE", "DATABASE", "test_db"};
-        sql.cmd(exampleCommand);
+// Function to handle WiFi connection
+void wifi(const char* SSID, const char* PASSWORD) {
+    WiFi.begin(SSID, PASSWORD);
+    int8_t connectingCounter = 0;
+    const int8_t maxRetries = 20;  // Maximum retries (20 seconds)
 
-        // Delay for 2 seconds
-        vTaskDelay(2000 / portTICK_PERIOD_MS);
+    Serial.print("Connecting to WiFi");
+
+    while (WiFi.status() != WL_CONNECTED && connectingCounter < maxRetries) {
+        delay(1000);
+        Serial.print(".");
+        connectingCounter++;
+    }
+
+    if (WiFi.status() == WL_CONNECTED) {
+        Serial.println("\nWiFi connected successfully!");
+        Serial.print("IP address: ");
+        Serial.println(WiFi.localIP());
+    } else {
+        Serial.println("\nFailed to connect to WiFi within 20 seconds.");
     }
 }
 
-void setup() {
-    Serial.begin(115200);  // Start Serial for debugging
-
-    // Create a task on Core 1 (secondary core) to run the SQL commands
-    xTaskCreatePinnedToCore(
-        runCommandTask,    // Task function
-        "SQL Command Task", // Name of the task
-        10000,             // Stack size (in bytes)
-        NULL,              // Parameter for the task
-        1,                 // Priority of the task
-        &CommandTask,      // Task handle
-        1                  // Core ID (1 for secondary core)
-    );
-}
-
+// Function to print free heap memory for debugging
 void RAM() {
     Serial.println("Free Heap: " + String(ESP.getFreeHeap()) + " bytes");
 }
 
 void loop() {
-    // Main core (Core 0) handles the RAM monitoring
-    RAM();
-    delay(1000);  // Delay as needed for main loop
+    server.handleClient();  // Continuously handle incoming client requests
+    RAM();  // Print free RAM every second
+    delay(1000);
 }
